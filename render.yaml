@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: doktor-curse
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start

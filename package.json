@@ -1,0 +1,9 @@
+{
+  "name": "doktor-curse-server",
+  "version": "1.0.0",
+  "description": "Doktor's Curse tarzı 5v5 saklambaç oyunu - WebSocket sunucusu",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" },
+  "engines": { "node": ">=18" }
+}
