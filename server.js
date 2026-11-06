@@ -1,6 +1,5 @@
 'use strict';
-// Doktor's Curse tarzı saklambaç - otoriter WebSocket sunucusu
-// Hunter'lar (avcı) çekiçle Monster'ları (canavar) avlar, Monster'lar görünmez olabilir.
+// Doktor's Curse tarzı saklambaç - otoriter WebSocket sunucusu (v2: büyük harita + el feneri görüşü)
 const http = require('http');
 const { WebSocketServer } = require('ws');
 
@@ -9,30 +8,83 @@ const num = (k, d) => (Number(process.env[k]) > 0 ? Number(process.env[k]) : d);
 
 // ---------------- Ayarlar (denge için buradan oyna) ----------------
 const CFG = {
-  W: 1152, H: 648, TICK: 20,
+  W: 1800, H: 1200, TICK: 20,
   MIN_PLAYERS: num('MIN_PLAYERS', 2), MAX_PLAYERS: 10,
-  COUNTDOWN: num('COUNTDOWN', 5),      // takımlar belli olur, herkes kilitli
-  HIDE_TIME: num('HIDE_TIME', 10),     // Monster'lar saklanır, Hunter'lar kilitli
-  ROUND_TIME: num('ROUND_TIME', 90),
+  COUNTDOWN: num('COUNTDOWN', 5),
+  HIDE_TIME: num('HIDE_TIME', 15),
+  ROUND_TIME: num('ROUND_TIME', 150),
   RESULT_TIME: num('RESULT_TIME', 6),
   HUNTER_SPEED: 200, MONSTER_SPEED: 175, INVIS_SPEED: 235,
   HUNTER_R: 14, MONSTER_R: 12,
   SWING_RANGE: 55, SWING_CD: 0.6,
-  PING_CD: 8, PING_TIME: 1.0,           // tracker: Monster'ları duvar/görünmezlik dinlemeden gösterir
+  PING_CD: 10, PING_TIME: 1.2,
   INVIS_TIME: 1.5, INVIS_CD: 6,
-  VIEW_HUNTER: 250, VIEW_MONSTER: 380,  // görüş mesafesi (duvar arkası görünmez)
+  // El feneri: ambient = etrafındaki küçük aydınlık, range = ışık huzmesi uzunluğu,
+  // half = huzmenin yarım açısı (radyan), blend = huzme kenarı yumuşaklığı
+  LIGHT: {
+    H: { ambient: 100, range: 400, half: 0.6, blend: 0.3 },
+    M: { ambient: 110, range: 360, half: 0.65, blend: 0.3 },
+  },
 };
 const DT = 1 / CFG.TICK;
 
-const WALLS = [
-  [200, 120, 160, 40], [500, 80, 40, 200], [800, 150, 200, 40],
-  [150, 350, 40, 200], [400, 420, 220, 40], [750, 380, 40, 200],
-  [950, 480, 140, 40], [580, 300, 100, 40],
-];
+// ---------------- Harita (malikâne) ----------------
+const T = 24; // duvar kalınlığı
+const WALLS = [];
+function hwall(x1, x2, y, gaps = []) {
+  let cur = x1;
+  for (const [a, b] of [...gaps].sort((p, q) => p[0] - q[0])) {
+    if (a > cur) WALLS.push([cur, y - T / 2, a - cur, T]);
+    cur = b;
+  }
+  if (x2 > cur) WALLS.push([cur, y - T / 2, x2 - cur, T]);
+}
+function vwall(y1, y2, x, gaps = []) {
+  let cur = y1;
+  for (const [a, b] of [...gaps].sort((p, q) => p[0] - q[0])) {
+    if (a > cur) WALLS.push([x - T / 2, cur, T, a - cur]);
+    cur = b;
+  }
+  if (y2 > cur) WALLS.push([x - T / 2, cur, T, y2 - cur]);
+}
+const box = (x, y, w, h) => WALLS.push([x, y, w, h]);
+
+// Giriş holü (sol) ile ana bölüm arası, 3 kapı
+vwall(0, CFG.H, 220, [[80, 200], [540, 660], [1000, 1120]]);
+// Üst ve alt oda sıraları ile orta salon arası
+hwall(220, CFG.W, 400, [[380, 500], [800, 920], [1220, 1340], [1600, 1720]]);
+hwall(220, CFG.W, 800, [[330, 450], [740, 860], [1180, 1300], [1560, 1680]]);
+// Odalar arası duvarlar
+vwall(0, 400, 640, [[140, 260]]);
+vwall(0, 400, 1060, [[180, 300]]);
+vwall(0, 400, 1480, [[120, 240]]);
+vwall(800, 1200, 640, [[940, 1060]]);
+vwall(800, 1200, 1060, [[900, 1020]]);
+vwall(800, 1200, 1480, [[960, 1080]]);
+// Giriş holü sandıkları
+box(100, 300, 60, 60); box(100, 820, 60, 60);
+// Orta salon sütunları / eşyalar
+box(500, 500, 60, 60); box(500, 640, 60, 60); box(800, 560, 120, 80);
+box(1100, 480, 60, 60); box(1100, 660, 60, 60); box(1350, 540, 100, 120);
+box(1650, 500, 70, 70); box(1650, 660, 70, 70);
+// Üst odalar
+box(300, 150, 90, 50); box(520, 250, 50, 100);
+box(720, 60, 50, 120); box(900, 260, 120, 50);
+box(1140, 140, 100, 50); box(1350, 260, 50, 100);
+box(1560, 60, 90, 50); box(1650, 250, 60, 60);
+// Alt odalar
+box(300, 900, 100, 50); box(520, 1000, 50, 120);
+box(720, 880, 50, 120); box(920, 1080, 120, 50);
+box(1160, 900, 120, 50); box(1380, 1040, 50, 100);
+box(1580, 880, 100, 50); box(1650, 1060, 60, 60);
+
+// Zemin bölgeleri (sadece görsel): [x, y, w, h, renkIndex]
+const FLOORS = [[0, 0, 220, CFG.H, 0], [220, 400, CFG.W - 220, 400, 1]];
 
 // ---------------- Yardımcılar ----------------
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const r1 = (v) => Math.round(v * 10) / 10;
+const r2 = (v) => Math.round(v * 100) / 100;
 
 function blocked(x, y, r) {
   if (x < r || x > CFG.W - r || y < r || y > CFG.H - r) return true;
@@ -59,13 +111,29 @@ function hasLOS(ax, ay, bx, by) {
   return true;
 }
 
+function angDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return Math.abs(d);
+}
+
+// Client'taki light_range() ile birebir aynı olmalı
+function lightRange(team, diff) {
+  const L = CFG.LIGHT[team];
+  if (diff <= L.half) return L.range;
+  if (diff >= L.half + L.blend) return L.ambient;
+  const t = (diff - L.half) / L.blend;
+  return L.range + (L.ambient - L.range) * t;
+}
+
 function randomFreePos(r) {
-  for (let i = 0; i < 200; i++) {
-    const x = 250 + Math.random() * (CFG.W - 280);
-    const y = 30 + Math.random() * (CFG.H - 60);
+  for (let i = 0; i < 300; i++) {
+    const x = 300 + Math.random() * (CFG.W - 340);
+    const y = 40 + Math.random() * (CFG.H - 80);
     if (!blocked(x, y, r + 2)) return { x, y };
   }
-  return { x: CFG.W - 60, y: CFG.H / 2 };
+  return { x: CFG.W - 80, y: CFG.H / 2 };
 }
 
 function shuffle(a) {
@@ -90,8 +158,8 @@ function newPlayer(ws, rawName) {
   if (!name) name = 'Oyuncu' + id;
   return {
     id, ws, name,
-    team: 'S', alive: false,            // S = izleyici (sonraki round'u bekler)
-    x: 0, y: 0, dx: 0, dy: 0,
+    team: 'S', alive: false,
+    x: 0, y: 0, dx: 0, dy: 0, ang: 0,
     swingCd: 0, pingCd: 0, pingT: 0, invCd: 0, invisT: 0,
     pend: { swing: false, ping: false, invis: false },
   };
@@ -126,21 +194,17 @@ function startCountdown() {
     p.pend = { swing: false, ping: false, invis: false };
   });
   const hs = list.filter((p) => p.team === 'H');
-  hs.forEach((p, i) => { p.x = 50; p.y = (CFG.H * (i + 1)) / (hs.length + 1); });
+  hs.forEach((p, i) => { p.x = 50; p.y = (CFG.H * (i + 1)) / (hs.length + 1); p.ang = 0; });
   list.filter((p) => p.team === 'M').forEach((p) => {
     const s = randomFreePos(CFG.MONSTER_R);
-    p.x = s.x; p.y = s.y;
+    p.x = s.x; p.y = s.y; p.ang = Math.random() * Math.PI * 2 - Math.PI;
   });
   phase = 'countdown';
   timer = CFG.COUNTDOWN;
   winner = null;
 }
 
-function endRound(w) {
-  phase = 'result';
-  winner = w;
-  timer = CFG.RESULT_TIME;
-}
+function endRound(w) { phase = 'result'; winner = w; timer = CFG.RESULT_TIME; }
 
 function toLobby() {
   phase = 'lobby';
@@ -189,15 +253,9 @@ function simulate() {
           }
         }
       }
-      if (p.pend.ping && p.pingCd <= 0) {
-        p.pingCd = CFG.PING_CD;
-        p.pingT = CFG.PING_TIME;
-      }
+      if (p.pend.ping && p.pingCd <= 0) { p.pingCd = CFG.PING_CD; p.pingT = CFG.PING_TIME; }
     }
-    if (p.team === 'M' && p.pend.invis && p.invCd <= 0) {
-      p.invCd = CFG.INVIS_CD;
-      p.invisT = CFG.INVIS_TIME;
-    }
+    if (p.team === 'M' && p.pend.invis && p.invCd <= 0) { p.invCd = CFG.INVIS_CD; p.invisT = CFG.INVIS_TIME; }
     p.pend = { swing: false, ping: false, invis: false };
   }
 }
@@ -216,15 +274,11 @@ function tick() {
       break;
     }
     case 'hide':
-      simulate();
-      timer -= DT;
-      checkWin();
+      simulate(); timer -= DT; checkWin();
       if (phase === 'hide' && timer <= 0) { phase = 'playing'; timer = CFG.ROUND_TIME; }
       break;
     case 'playing':
-      simulate();
-      timer -= DT;
-      checkWin();
+      simulate(); timer -= DT; checkWin();
       if (phase === 'playing' && timer <= 0) endRound('M');
       break;
     case 'result':
@@ -235,7 +289,14 @@ function tick() {
   broadcast();
 }
 
-// ---------------- Görüş + yayın ----------------
+// ---------------- Görüş (el feneri) + yayın ----------------
+function canSee(v, p) {
+  const dx = p.x - v.x, dy = p.y - v.y;
+  const d = Math.hypot(dx, dy);
+  const cap = lightRange(v.team, angDiff(v.ang, Math.atan2(dy, dx)));
+  return d <= cap && hasLOS(v.x, v.y, p.x, p.y);
+}
+
 function broadcast() {
   const all = [...players.values()];
   const { h, m } = counts();
@@ -246,14 +307,11 @@ function broadcast() {
       if (p.team === 'S' || !p.alive) continue;
       let visible = false;
       if (p === v || spectator || p.team === v.team) visible = true;
-      else {
-        const d = Math.hypot(p.x - v.x, p.y - v.y);
-        if (v.team === 'H') { // p = Monster
-          if (v.pingT > 0) visible = true;
-          else if (p.invisT <= 0 && d <= CFG.VIEW_HUNTER && hasLOS(v.x, v.y, p.x, p.y)) visible = true;
-        } else if (d <= CFG.VIEW_MONSTER && hasLOS(v.x, v.y, p.x, p.y)) visible = true; // p = Hunter
-      }
-      if (visible) list.push({ id: p.id, n: p.name, tm: p.team, x: r1(p.x), y: r1(p.y), iv: p.invisT > 0 ? 1 : 0 });
+      else if (v.team === 'H') { // p = Monster
+        if (v.pingT > 0) visible = true;
+        else if (p.invisT <= 0 && canSee(v, p)) visible = true;
+      } else if (canSee(v, p)) visible = true; // v = Monster, p = Hunter
+      if (visible) list.push({ id: p.id, n: p.name, tm: p.team, x: r1(p.x), y: r1(p.y), a: r2(p.ang), iv: p.invisT > 0 ? 1 : 0 });
     }
     send(v.ws, {
       t: 's', ph: phase, tr: Math.max(0, Math.ceil(timer)), w: winner,
@@ -273,7 +331,7 @@ function broadcast() {
 // ---------------- Ağ ----------------
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end(`Doktor's Curse sunucusu çalışıyor. Oyuncu: ${players.size}, durum: ${phase}\n`);
+  res.end(`Doktor's Curse sunucusu çalışıyor (v2). Oyuncu: ${players.size}, durum: ${phase}\n`);
 });
 const wss = new WebSocketServer({ server, maxPayload: 2048 });
 
@@ -292,12 +350,14 @@ wss.on('connection', (ws) => {
       player = newPlayer(ws, m.name);
       players.set(player.id, player);
       send(ws, {
-        t: 'welcome', id: player.id, W: CFG.W, H: CFG.H, walls: WALLS,
-        cfg: { min: CFG.MIN_PLAYERS, view_h: CFG.VIEW_HUNTER, view_m: CFG.VIEW_MONSTER, swing: CFG.SWING_RANGE },
+        t: 'welcome', id: player.id, W: CFG.W, H: CFG.H, walls: WALLS, floors: FLOORS,
+        cfg: { min: CFG.MIN_PLAYERS, light: CFG.LIGHT, swing: CFG.SWING_RANGE },
       });
     } else if (m.t === 'in' && player) {
       player.dx = clamp(Number(m.dx) || 0, -1, 1);
       player.dy = clamp(Number(m.dy) || 0, -1, 1);
+      const a = Number(m.ang);
+      if (Number.isFinite(a)) player.ang = clamp(a, -7, 7);
       if (m.a1) player.pend.swing = true;
       if (m.a2) player.pend.ping = true;
       if (m.a3) player.pend.invis = true;
