@@ -47,7 +47,6 @@ function vwall(y1, y2, x, gaps = []) {
   }
   if (y2 > cur) WALLS.push([x - T / 2, cur, T, y2 - cur]);
 }
-const box = (x, y, w, h) => WALLS.push([x, y, w, h]);
 
 // Giriş holü (sol) ile ana bölüm arası, 3 kapı
 vwall(0, CFG.H, 220, [[80, 200], [540, 660], [1000, 1120]]);
@@ -61,25 +60,103 @@ vwall(0, 400, 1480, [[120, 240]]);
 vwall(800, 1200, 640, [[940, 1060]]);
 vwall(800, 1200, 1060, [[900, 1020]]);
 vwall(800, 1200, 1480, [[960, 1080]]);
-// Giriş holü sandıkları
-box(100, 300, 60, 60); box(100, 820, 60, 60);
-// Orta salon sütunları / eşyalar
-box(500, 500, 60, 60); box(500, 640, 60, 60); box(800, 560, 120, 80);
-box(1100, 480, 60, 60); box(1100, 660, 60, 60); box(1350, 540, 100, 120);
-box(1650, 500, 70, 70); box(1650, 660, 70, 70);
-// Üst odalar
-box(300, 150, 90, 50); box(520, 250, 50, 100);
-box(720, 60, 50, 120); box(900, 260, 120, 50);
-box(1140, 140, 100, 50); box(1350, 260, 50, 100);
-box(1560, 60, 90, 50); box(1650, 250, 60, 60);
-// Alt odalar
-box(300, 900, 100, 50); box(520, 1000, 50, 120);
-box(720, 880, 50, 120); box(920, 1080, 120, 50);
-box(1160, 900, 120, 50); box(1380, 1040, 50, 100);
-box(1580, 880, 100, 50); box(1650, 1060, 60, 60);
 
-// Zemin bölgeleri (sadece görsel): [x, y, w, h, renkIndex]
-const FLOORS = [[0, 0, 220, CFG.H, 0], [220, 400, CFG.W - 220, 400, 1]];
+// ---------------- Eşyalar ----------------
+// [solid (çarpışma), tall (ışığı ve görüşü keser)]
+const TYPES = {
+  rug_red: [0, 0], rug_blue: [0, 0], rug_green: [0, 0],
+  table: [1, 0], dining: [1, 0], coffee: [1, 0], desk: [1, 0], counter: [1, 0], altar: [1, 0],
+  bed: [1, 0], sofa: [1, 0], armchair: [1, 0], piano: [1, 0], nightstand: [1, 0],
+  bench: [1, 0], sarcophagus: [1, 0], cabinet: [1, 0], plant: [1, 0], barrel: [1, 0], crate: [1, 0],
+  bookshelf: [1, 1], wardrobe: [1, 1], fireplace: [1, 1], statue: [1, 1],
+  pillar: [1, 1], clock: [1, 1], winerack: [1, 1],
+};
+const PROPS = [];
+function prop(type, x, y, w, h) {
+  const f = TYPES[type];
+  if (!f) throw new Error('bilinmeyen eşya: ' + type);
+  PROPS.push([type, x, y, w, h, f[0], f[1]]);
+}
+
+// Giriş holü
+prop('rug_red', 70, 40, 80, 1120);
+prop('plant', 14, 14, 40, 40); prop('plant', 14, 1146, 40, 40);
+prop('clock', 150, 14, 44, 60); prop('clock', 150, 1126, 44, 60);
+prop('bench', 166, 250, 36, 160); prop('bench', 166, 790, 36, 160);
+
+// Orta salon
+prop('rug_red', 700, 480, 300, 240);
+prop('rug_blue', 500, 500, 190, 220);
+prop('rug_green', 1240, 500, 250, 200);
+prop('sofa', 520, 430, 140, 48); prop('sofa', 520, 722, 140, 48);
+prop('coffee', 540, 570, 100, 60);
+prop('dining', 760, 560, 200, 90);
+prop('piano', 1020, 540, 110, 90);
+prop('pillar', 1150, 470, 44, 44); prop('pillar', 1150, 690, 44, 44);
+prop('fireplace', 1390, 414, 100, 44);
+prop('statue', 1660, 490, 48, 48); prop('statue', 1660, 664, 48, 48);
+prop('plant', 250, 430, 36, 36); prop('plant', 250, 732, 36, 36);
+prop('plant', 1740, 430, 36, 36); prop('plant', 1740, 732, 36, 36);
+
+// Üst sıra: kütüphane
+prop('rug_green', 320, 120, 260, 220);
+prop('bookshelf', 300, 10, 230, 40); prop('bookshelf', 236, 230, 40, 150); prop('bookshelf', 590, 280, 36, 100);
+prop('desk', 360, 170, 110, 56); prop('armchair', 500, 230, 56, 56);
+prop('plant', 300, 330, 34, 34);
+// Üst sıra: yatak odası
+prop('rug_blue', 720, 190, 260, 160);
+prop('bed', 760, 16, 100, 140); prop('nightstand', 708, 16, 40, 40); prop('nightstand', 868, 16, 40, 40);
+prop('wardrobe', 940, 10, 100, 50); prop('cabinet', 930, 310, 100, 50); prop('armchair', 700, 300, 56, 56);
+// Üst sıra: mutfak
+prop('rug_red', 1170, 150, 190, 120);
+prop('counter', 1076, 10, 380, 44); prop('table', 1190, 170, 150, 80);
+prop('barrel', 1100, 330, 36, 36); prop('barrel', 1146, 330, 36, 36);
+prop('crate', 1410, 300, 50, 50); prop('crate', 1360, 310, 40, 40);
+// Üst sıra: galeri
+prop('rug_red', 1560, 110, 200, 240);
+prop('statue', 1530, 30, 44, 44); prop('statue', 1710, 30, 44, 44);
+prop('altar', 1620, 60, 80, 50); prop('bench', 1560, 250, 150, 36);
+prop('plant', 1504, 330, 34, 34); prop('plant', 1748, 330, 34, 34);
+
+// Alt sıra: kiler
+prop('rug_blue', 360, 920, 200, 130);
+prop('barrel', 250, 830, 36, 36); prop('barrel', 292, 830, 36, 36);
+prop('table', 400, 950, 120, 70);
+prop('crate', 310, 1040, 46, 46); prop('crate', 360, 1040, 46, 46);
+prop('winerack', 300, 1160, 200, 36);
+// Alt sıra: hizmetçi odası
+prop('rug_blue', 720, 900, 260, 120);
+prop('bed', 700, 1050, 90, 140); prop('bed', 810, 1050, 90, 140); prop('nightstand', 908, 1150, 40, 40);
+prop('wardrobe', 960, 818, 88, 46); prop('cabinet', 660, 830, 60, 40);
+// Alt sıra: mahzen
+prop('crate', 1112, 1100, 50, 50); prop('crate', 1162, 1100, 50, 50); prop('crate', 1137, 1050, 50, 50);
+prop('barrel', 1390, 830, 36, 36); prop('barrel', 1430, 830, 36, 36);
+prop('winerack', 1200, 1160, 200, 36); prop('table', 1250, 960, 110, 70);
+// Alt sıra: kripta
+prop('rug_green', 1580, 900, 200, 260);
+prop('sarcophagus', 1640, 1000, 60, 140);
+prop('statue', 1530, 1130, 44, 44); prop('statue', 1720, 1130, 44, 44); prop('statue', 1730, 880, 44, 44);
+
+// Işık kaynakları: [x, y, yarıçap, tip]
+const LAMPS = [
+  [110, 140, 190, 'sconce'], [110, 600, 260, 'chandelier'], [110, 1060, 190, 'sconce'],
+  [300, 600, 170, 'lamp'], [700, 600, 280, 'chandelier'], [1250, 600, 280, 'chandelier'], [1440, 490, 240, 'fire'],
+  [420, 110, 190, 'lamp'], [888, 36, 130, 'candle'], [1230, 110, 200, 'lamp'],
+  [1640, 230, 230, 'chandelier'], [1640, 70, 120, 'candle'],
+  [400, 880, 190, 'lamp'], [800, 960, 190, 'lamp'], [928, 1170, 120, 'candle'],
+  [1300, 1100, 200, 'lamp'], [1670, 975, 150, 'candle'],
+];
+
+// Zemin bölgeleri (görsel): [x, y, w, h, stil]
+const FLOORS = [
+  [0, 0, 220, CFG.H, 0],
+  [220, 400, CFG.W - 220, 400, 1],
+  [220, 0, 420, 400, 2], [640, 0, 420, 400, 3], [1060, 0, 420, 400, 4], [1480, 0, 320, 400, 5],
+  [220, 800, 420, 400, 4], [640, 800, 420, 400, 3], [1060, 800, 420, 400, 6], [1480, 800, 320, 400, 5],
+];
+
+// Çarpışan her şey: duvarlar + katı eşyalar
+const COLLIDERS = [...WALLS, ...PROPS.filter((p) => p[5]).map((p) => [p[1], p[2], p[3], p[4]])];
 
 // ---------------- Yardımcılar ----------------
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -88,7 +165,7 @@ const r2 = (v) => Math.round(v * 100) / 100;
 
 function blocked(x, y, r) {
   if (x < r || x > CFG.W - r || y < r || y > CFG.H - r) return true;
-  for (const [wx, wy, ww, wh] of WALLS) {
+  for (const [wx, wy, ww, wh] of COLLIDERS) {
     if (x >= wx - r && x <= wx + ww + r && y >= wy - r && y <= wy + wh + r) return true;
   }
   return false;
@@ -99,38 +176,35 @@ function moveWithWalls(p, sx, sy, r) {
   if (!blocked(p.x, p.y + sy, r)) p.y += sy;
 }
 
-function hasLOS(ax, ay, bx, by) {
-  const dx = bx - ax, dy = by - ay;
-  const steps = Math.ceil(Math.hypot(dx, dy) / 8);
-  for (let i = 1; i < steps; i++) {
-    const x = ax + (dx * i) / steps, y = ay + (dy * i) / steps;
-    for (const [wx, wy, ww, wh] of WALLS) {
-      if (x >= wx && x <= wx + ww && y >= wy && y <= wy + wh) return false;
+// Giriş holünden ulaşılabilen hücreler: Monster'ın ulaşılamayan bir cebe doğmasını engeller
+const REACH = (() => {
+  const S = 10, R = 14, gw = Math.floor(CFG.W / S), gh = Math.floor(CFG.H / S);
+  const free = (gx, gy) => !blocked(gx * S + S / 2, gy * S + S / 2, R);
+  let sy = Math.floor(gh / 2);
+  while (!free(5, sy)) sy++;
+  const seen = new Uint8Array(gw * gh);
+  const stack = [[5, sy]];
+  seen[sy * gw + 5] = 1;
+  const cells = [];
+  while (stack.length) {
+    const [x, y] = stack.pop();
+    cells.push([x * S + S / 2, y * S + S / 2]);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= gw || ny >= gh || seen[ny * gw + nx] || !free(nx, ny)) continue;
+      seen[ny * gw + nx] = 1;
+      stack.push([nx, ny]);
     }
   }
-  return true;
-}
-
-function angDiff(a, b) {
-  let d = a - b;
-  while (d > Math.PI) d -= 2 * Math.PI;
-  while (d < -Math.PI) d += 2 * Math.PI;
-  return Math.abs(d);
-}
-
-// Client'taki light_range() ile birebir aynı olmalı
-function lightRange(team, diff) {
-  const L = CFG.LIGHT[team];
-  if (diff <= L.half) return L.range;
-  if (diff >= L.half + L.blend) return L.ambient;
-  const t = (diff - L.half) / L.blend;
-  return L.range + (L.ambient - L.range) * t;
-}
+  return cells;
+})();
 
 function randomFreePos(r) {
   for (let i = 0; i < 300; i++) {
-    const x = 300 + Math.random() * (CFG.W - 340);
-    const y = 40 + Math.random() * (CFG.H - 80);
+    const c = REACH[Math.floor(Math.random() * REACH.length)];
+    if (c[0] < 300) continue;
+    const x = c[0] + (Math.random() - 0.5) * 8;
+    const y = c[1] + (Math.random() - 0.5) * 8;
     if (!blocked(x, y, r + 2)) return { x, y };
   }
   return { x: CFG.W - 80, y: CFG.H / 2 };
@@ -289,30 +363,18 @@ function tick() {
   broadcast();
 }
 
-// ---------------- Görüş (el feneri) + yayın ----------------
-function canSee(v, p) {
-  const dx = p.x - v.x, dy = p.y - v.y;
-  const d = Math.hypot(dx, dy);
-  const cap = lightRange(v.team, angDiff(v.ang, Math.atan2(dy, dx)));
-  return d <= cap && hasLOS(v.x, v.y, p.x, p.y);
-}
-
+// ---------------- Yayın ----------------
+// Görüş kararı (el feneri, ışık, duvar arkası) client'ta verilir; sunucu yalnızca
+// canlı herkesin konumunu gönderir (iv = görünmezlik bayrağı).
 function broadcast() {
   const all = [...players.values()];
   const { h, m } = counts();
+  const list = [];
+  for (const p of all) {
+    if (p.team === 'S' || !p.alive) continue;
+    list.push({ id: p.id, n: p.name, tm: p.team, x: r1(p.x), y: r1(p.y), a: r2(p.ang), iv: p.invisT > 0 ? 1 : 0 });
+  }
   for (const v of all) {
-    const spectator = v.team === 'S' || !v.alive;
-    const list = [];
-    for (const p of all) {
-      if (p.team === 'S' || !p.alive) continue;
-      let visible = false;
-      if (p === v || spectator || p.team === v.team) visible = true;
-      else if (v.team === 'H') { // p = Monster
-        if (v.pingT > 0) visible = true;
-        else if (p.invisT <= 0 && canSee(v, p)) visible = true;
-      } else if (canSee(v, p)) visible = true; // v = Monster, p = Hunter
-      if (visible) list.push({ id: p.id, n: p.name, tm: p.team, x: r1(p.x), y: r1(p.y), a: r2(p.ang), iv: p.invisT > 0 ? 1 : 0 });
-    }
     send(v.ws, {
       t: 's', ph: phase, tr: Math.max(0, Math.ceil(timer)), w: winner,
       np: players.size, hc: h, mc: m,
@@ -331,7 +393,7 @@ function broadcast() {
 // ---------------- Ağ ----------------
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end(`Doktor's Curse sunucusu çalışıyor (v2). Oyuncu: ${players.size}, durum: ${phase}\n`);
+  res.end(`Doktor's Curse sunucusu çalışıyor (v3). Oyuncu: ${players.size}, durum: ${phase}\n`);
 });
 const wss = new WebSocketServer({ server, maxPayload: 2048 });
 
@@ -350,7 +412,7 @@ wss.on('connection', (ws) => {
       player = newPlayer(ws, m.name);
       players.set(player.id, player);
       send(ws, {
-        t: 'welcome', id: player.id, W: CFG.W, H: CFG.H, walls: WALLS, floors: FLOORS,
+        t: 'welcome', id: player.id, W: CFG.W, H: CFG.H, walls: WALLS, props: PROPS, lamps: LAMPS, floors: FLOORS,
         cfg: { min: CFG.MIN_PLAYERS, light: CFG.LIGHT, swing: CFG.SWING_RANGE },
       });
     } else if (m.t === 'in' && player) {
